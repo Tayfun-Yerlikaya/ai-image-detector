@@ -1,21 +1,20 @@
 import os
 import io
 import base64
+import gc
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
 from flask import Flask, render_template, request
 
-# Render 512MB RAM sınırına takılmamak için CPU izleme sınırlandırması
+# Sunucu işlemci kullanımını tek çekirdeğe sabitle
 torch.set_num_threads(1)
 
 app = Flask(__name__)
-
-# 1. Device Selection (Ücretsiz sunucuda daima CPU)
 device = torch.device("cpu")
 
-# 2. Load ResNet-18 Model
+# 1. Load ResNet-18 Model
 def load_model(model_path):
     model = models.resnet18(weights=None)
     num_ftrs = model.fc.in_features
@@ -35,7 +34,7 @@ if os.path.exists(MODEL_PATH):
 else:
     print(f"❌ WARNING: '{MODEL_PATH}' not found!")
 
-# 3. Image Preprocessing
+# 2. Image Preprocessing
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -45,7 +44,7 @@ transform = transforms.Compose([
     )
 ])
 
-# 4. Class Labels (English)
+# 3. Class Labels (English)
 CLASS_NAMES = {
     0: {'label': 'AI Generated', 'color': '#ef4444'},
     1: {'label': 'Real Image', 'color': '#10b981'},
@@ -68,13 +67,16 @@ def index():
                 image_bytes = file.read()
                 image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
 
-                # Convert Image to Base64 for HTML Preview
+                # RAM tasarrufu için önizleme resmini boyutlandır
+                preview_img = image.copy()
+                preview_img.thumbnail((600, 600))
+                
                 buffered = io.BytesIO()
-                image.save(buffered, format="JPEG", quality=70) # Bellek tasarrufu için sıkıştırma
+                preview_img.save(buffered, format="JPEG", quality=75)
                 img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
                 uploaded_image_data = f"data:image/jpeg;base64,{img_str}"
 
-                # Model Prediction with Strict Memory Protection
+                # Model Prediction
                 input_tensor = transform(image).unsqueeze(0).to(device)
                 
                 with torch.no_grad(), torch.inference_mode():
@@ -85,7 +87,11 @@ def index():
                     pred_idx = predicted_class.item()
                     conf_score = round(confidence.item() * 100, 2)
 
-                # 🎯 THRESHOLD / GRAY AREA LOGIC:
+                # Belleği anında temizle
+                del input_tensor, outputs, probabilities, image, preview_img
+                gc.collect()
+
+                # THRESHOLD / GRAY AREA LOGIC:
                 if conf_score < 60.0:
                     result = {
                         'prediction': CLASS_NAMES['gray']['label'],
@@ -106,6 +112,7 @@ def index():
                 return render_template('index.html', result=result)
 
             except Exception as e:
+                gc.collect()
                 return render_template('index.html', error=f'An error occurred while processing the image: {str(e)}')
 
     return render_template('index.html')
