@@ -10,6 +10,7 @@ app = Flask(__name__)
 
 MODEL_PATH = 'model.onnx'
 
+# ONNX Modelini Yükle
 if os.path.exists(MODEL_PATH):
     session = ort.InferenceSession(MODEL_PATH, providers=['CPUExecutionProvider'])
     input_name = session.get_inputs()[0].name
@@ -17,6 +18,7 @@ if os.path.exists(MODEL_PATH):
 else:
     print(f"❌ WARNING: '{MODEL_PATH}' not found!")
 
+# PyTorch torchvision.transforms.Resize() ve Normalize() adımlarını taklit eden fonksiyon
 def preprocess_image(image):
     image = image.resize((224, 224), Image.BILINEAR)
     img_data = np.array(image, dtype=np.float32) / 255.0
@@ -28,7 +30,7 @@ def preprocess_image(image):
     return img_data
 
 # 🎯 SICAKLIK ÖLÇEKLEMELİ SOFTMAX (Temperature Scaling)
-def temperature_scaled_softmax(logits, temperature=2.0):
+def temperature_scaled_softmax(logits, temperature=3.0):
     # Logitleri sıcaklık katsayısına bölerek aşırı özgüveni (overconfidence) kırıyoruz
     scaled_logits = logits / temperature
     e_x = np.exp(scaled_logits - np.max(scaled_logits, axis=1, keepdims=True))
@@ -55,24 +57,25 @@ def index():
                 image_bytes = file.read()
                 image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
 
+                # Base64 Görsel Önizleme
                 buffered = io.BytesIO()
                 image.save(buffered, format="JPEG", quality=95)
                 img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
                 uploaded_image_data = f"data:image/jpeg;base64,{img_str}"
 
+                # ONNX Runtime Tahmini
                 input_data = preprocess_image(image)
                 raw_outputs = session.run(None, {input_name: input_data})[0]
                 
-                # 🎯 Temperature = 2.0 vererek modelin bağırarak %90 demesini engelliyoruz
-                probabilities = temperature_scaled_softmax(raw_outputs, temperature=2.0)[0]
+                # 🎯 Temperature = 3.0 ile aşırı özgüvenli tahminleri törpülüyoruz
+                probabilities = temperature_scaled_softmax(raw_outputs, temperature=3.0)[0]
 
                 pred_idx = int(np.argmax(probabilities))
                 confidence = float(probabilities[pred_idx])
                 conf_score = round(confidence * 100, 2)
 
-                # 🎯 EŞİK DEĞERİ DÜZENLEMESİ:
-                # Sıcaklık ölçeklemesi sonrası %68'in altında kalanlar doğrudan "Şüpheli / Filtreli"ye düşer
-                if conf_score < 68.0:
+                # 🎯 THRESHOLD / GRAY AREA LOGIC (%75.0 altındakiler doğrudan Gri Alana düşer)
+                if conf_score < 75.0:
                     result = {
                         'prediction': CLASS_NAMES['gray']['label'],
                         'confidence': conf_score,
