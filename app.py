@@ -7,10 +7,13 @@ from torchvision import models, transforms
 from PIL import Image
 from flask import Flask, render_template, request
 
+# Render 512MB RAM sınırına takılmamak için CPU izleme sınırlandırması
+torch.set_num_threads(1)
+
 app = Flask(__name__)
 
-# 1. Device Selection
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# 1. Device Selection (Ücretsiz sunucuda daima CPU)
+device = torch.device("cpu")
 
 # 2. Load ResNet-18 Model
 def load_model(model_path):
@@ -67,15 +70,14 @@ def index():
 
                 # Convert Image to Base64 for HTML Preview
                 buffered = io.BytesIO()
-                image.save(buffered, format="JPEG")
+                image.save(buffered, format="JPEG", quality=70) # Bellek tasarrufu için sıkıştırma
                 img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
                 uploaded_image_data = f"data:image/jpeg;base64,{img_str}"
 
-                # Model Prediction
+                # Model Prediction with Strict Memory Protection
                 input_tensor = transform(image).unsqueeze(0).to(device)
                 
-                model.eval()
-                with torch.no_grad():
+                with torch.no_grad(), torch.inference_mode():
                     outputs = model(input_tensor)
                     probabilities = torch.nn.functional.softmax(outputs, dim=1)
                     
