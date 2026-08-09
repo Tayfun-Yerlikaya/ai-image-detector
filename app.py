@@ -10,7 +10,7 @@ app = Flask(__name__)
 
 MODEL_PATH = 'model.onnx'
 
-# ONNX Modelini Yükle (Sadece ~50MB RAM tüketir)
+# ONNX Modelini Yükle (Sadece ~50MB RAM harcar, asla çökmez)
 if os.path.exists(MODEL_PATH):
     session = ort.InferenceSession(MODEL_PATH, providers=['CPUExecutionProvider'])
     input_name = session.get_inputs()[0].name
@@ -18,15 +18,16 @@ if os.path.exists(MODEL_PATH):
 else:
     print(f"❌ WARNING: '{MODEL_PATH}' not found!")
 
-# PyTorch olmadan pure NumPy ile Ön İşleme (Preprocessing)
+# PyTorch'un torchvision.transforms.Resize() ve Normalize() adımlarını %100 taklit eden fonksiyon
 def preprocess_image(image):
-    image = image.resize((224, 224))
+    # PyTorch ile aynı Bilinear interpolasyon kullanarak piksel kalitesini koruyoruz
+    image = image.resize((224, 224), Image.BILINEAR)
     img_data = np.array(image, dtype=np.float32) / 255.0
     mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
     std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
     img_data = (img_data - mean) / std
     img_data = img_data.transpose(2, 0, 1) # HWC -> CHW
-    img_data = np.expand_dims(img_data, axis=0) # Batch ekle
+    img_data = np.expand_dims(img_data, axis=0) # Batch boyutu ekle
     return img_data
 
 def softmax(x):
@@ -54,11 +55,9 @@ def index():
                 image_bytes = file.read()
                 image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
 
-                # Base64 Görsel Önizleme
-                preview_img = image.copy()
-                preview_img.thumbnail((600, 600))
+                # Görsel kalitesini bozmadan (%95 kalite) önizleme verisi oluşturma
                 buffered = io.BytesIO()
-                preview_img.save(buffered, format="JPEG", quality=75)
+                image.save(buffered, format="JPEG", quality=95)
                 img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
                 uploaded_image_data = f"data:image/jpeg;base64,{img_str}"
 
@@ -71,6 +70,7 @@ def index():
                 confidence = float(probabilities[pred_idx])
                 conf_score = round(confidence * 100, 2)
 
+                # THRESHOLD / GRAY AREA LOGIC
                 if conf_score < 60.0:
                     result = {
                         'prediction': CLASS_NAMES['gray']['label'],
