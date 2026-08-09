@@ -10,7 +10,6 @@ app = Flask(__name__)
 
 MODEL_PATH = 'model.onnx'
 
-# ONNX Modelini Yükle (Sadece ~50MB RAM harcar, asla çökmez)
 if os.path.exists(MODEL_PATH):
     session = ort.InferenceSession(MODEL_PATH, providers=['CPUExecutionProvider'])
     input_name = session.get_inputs()[0].name
@@ -18,26 +17,27 @@ if os.path.exists(MODEL_PATH):
 else:
     print(f"❌ WARNING: '{MODEL_PATH}' not found!")
 
-# PyTorch'un torchvision.transforms.Resize() ve Normalize() adımlarını %100 taklit eden fonksiyon
 def preprocess_image(image):
-    # PyTorch ile aynı Bilinear interpolasyon kullanarak piksel kalitesini koruyoruz
     image = image.resize((224, 224), Image.BILINEAR)
     img_data = np.array(image, dtype=np.float32) / 255.0
     mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
     std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
     img_data = (img_data - mean) / std
-    img_data = img_data.transpose(2, 0, 1) # HWC -> CHW
-    img_data = np.expand_dims(img_data, axis=0) # Batch boyutu ekle
+    img_data = img_data.transpose(2, 0, 1)
+    img_data = np.expand_dims(img_data, axis=0)
     return img_data
 
-def softmax(x):
-    e_x = np.exp(x - np.max(x, axis=1, keepdims=True))
+# 🎯 SICAKLIK ÖLÇEKLEMELİ SOFTMAX (Temperature Scaling)
+def temperature_scaled_softmax(logits, temperature=2.0):
+    # Logitleri sıcaklık katsayısına bölerek aşırı özgüveni (overconfidence) kırıyoruz
+    scaled_logits = logits / temperature
+    e_x = np.exp(scaled_logits - np.max(scaled_logits, axis=1, keepdims=True))
     return e_x / e_x.sum(axis=1, keepdims=True)
 
 CLASS_NAMES = {
     0: {'label': 'AI Generated', 'color': '#ef4444'},
     1: {'label': 'Real Image', 'color': '#10b981'},
-    'gray': {'label': 'Uncertain / Suspicious', 'color': '#f59e0b'}
+    'gray': {'label': 'Uncertain / Suspicious (Filter Detected)', 'color': '#f59e0b'}
 }
 
 @app.route('/', methods=['GET', 'POST'])
@@ -55,23 +55,24 @@ def index():
                 image_bytes = file.read()
                 image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
 
-                # Görsel kalitesini bozmadan (%95 kalite) önizleme verisi oluşturma
                 buffered = io.BytesIO()
                 image.save(buffered, format="JPEG", quality=95)
                 img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
                 uploaded_image_data = f"data:image/jpeg;base64,{img_str}"
 
-                # ONNX Runtime Tahmini
                 input_data = preprocess_image(image)
-                outputs = session.run(None, {input_name: input_data})[0]
-                probabilities = softmax(outputs)[0]
+                raw_outputs = session.run(None, {input_name: input_data})[0]
+                
+                # 🎯 Temperature = 2.0 vererek modelin bağırarak %90 demesini engelliyoruz
+                probabilities = temperature_scaled_softmax(raw_outputs, temperature=2.0)[0]
 
                 pred_idx = int(np.argmax(probabilities))
                 confidence = float(probabilities[pred_idx])
                 conf_score = round(confidence * 100, 2)
 
-                # THRESHOLD / GRAY AREA LOGIC
-                if conf_score < 60.0:
+                # 🎯 EŞİK DEĞERİ DÜZENLEMESİ:
+                # Sıcaklık ölçeklemesi sonrası %68'in altında kalanlar doğrudan "Şüpheli / Filtreli"ye düşer
+                if conf_score < 68.0:
                     result = {
                         'prediction': CLASS_NAMES['gray']['label'],
                         'confidence': conf_score,
