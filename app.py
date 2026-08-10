@@ -73,10 +73,10 @@ def index():
                 confidence = float(probabilities[pred_idx])
                 conf_score = round(confidence * 100, 2)
 
-                # 🎯 AI Kararını Bir Tık Zorlaştıran Eşik Mantığı:
-                # Eğer model "AI" (0) diyorsa en az %72 güven oranı ister.
-                # Eğer model "Real" (1) diyorsa standart %65 sınırını kullanır.
-                ai_threshold = 72.0
+                # 🎯 AI Kararını Bir Tık Daha Zorlaştıran Eşik:
+                # AI (0) demek için en az %78.0 güven şartı arıyoruz.
+                # Real (1) için senin belirlediğin %65.0 sınırı aynen duruyor.
+                ai_threshold = 78.0
                 real_threshold = 65.0
 
                 is_gray = False
