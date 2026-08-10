@@ -33,7 +33,7 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 24px;
             padding: 40px;
-            max-width: 540px;
+            max-width: 640px;
             width: 100%;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
@@ -156,31 +156,51 @@
             animation: fadeIn 0.4s ease-out;
         }
 
+        .previews-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
         .preview-box {
             width: 100%;
-            max-height: 380px;
+            max-height: 320px;
             border-radius: 12px;
             overflow: hidden;
-            margin-bottom: 20px;
             border: 1px solid rgba(255, 255, 255, 0.1);
             background: rgba(0, 0, 0, 0.2);
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
+            position: relative;
+            padding: 8px;
         }
 
         .preview-box img {
             max-width: 100%;
-            max-height: 380px;
+            max-height: 280px;
             width: auto;
             height: auto;
             object-fit: contain;
             display: block;
+            border-radius: 8px;
+        }
+
+        .preview-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #94a3b8;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .result-card {
             border-left: 4px solid;
             padding-left: 16px;
+            margin-bottom: 20px;
         }
 
         .result-title {
@@ -209,6 +229,56 @@
             margin-top: 6px;
             display: flex;
             justify-content: space-between;
+        }
+
+        /* EXIF Metadata Card */
+        .exif-container {
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 12px;
+            padding: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .exif-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #38bdf8;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .exif-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 10px;
+        }
+
+        .exif-item {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .exif-key {
+            font-size: 0.7rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .exif-value {
+            font-size: 0.85rem;
+            color: #e2e8f0;
+            font-weight: 500;
+            word-break: break-all;
+        }
+
+        .exif-empty {
+            font-size: 0.85rem;
+            color: #94a3b8;
         }
 
         .error-box {
@@ -251,10 +321,21 @@
 
         {% if result %}
         <div class="result-container">
-            <div class="preview-box">
-                <img src="{{ result.image_data }}" alt="Analyzed Image">
+            <!-- Image & Heatmap Grid -->
+            <div class="previews-grid">
+                <div class="preview-box">
+                    <div class="preview-label">Original Image</div>
+                    <img src="{{ result.image_data }}" alt="Analyzed Image">
+                </div>
+                {% if result.heatmap_data %}
+                <div class="preview-box">
+                    <div class="preview-label">🔥 Model Focus (Heatmap)</div>
+                    <img src="{{ result.heatmap_data }}" alt="Heatmap Focus">
+                </div>
+                {% endif %}
             </div>
 
+            <!-- Result Summary Card -->
             <div class="result-card" style="border-left-color: {{ result.color }};">
                 <div class="result-title" style="color: {{ result.color }};">
                     {{ result.prediction }}
@@ -268,6 +349,23 @@
                     <span>Confidence Score</span>
                     <strong>%{{ result.confidence }}</strong>
                 </div>
+            </div>
+
+            <!-- EXIF Metadata Card -->
+            <div class="exif-container">
+                <div class="exif-title">📷 EXIF Metadata Analysis</div>
+                {% if result.exif and result.exif|length > 0 %}
+                    <div class="exif-grid">
+                        {% for key, val in result.exif.items() %}
+                            <div class="exif-item">
+                                <div class="exif-key">{{ key }}</div>
+                                <div class="exif-value">{{ val }}</div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="exif-empty">⚠️ No EXIF Metadata found (Likely Digital / AI Generated or Stripped).</div>
+                {% endif %}
             </div>
         </div>
         {% endif %}

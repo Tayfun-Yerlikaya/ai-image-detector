@@ -1,6 +1,7 @@
 import os
 import io
 import base64
+import traceback
 import numpy as np
 import onnxruntime as ort
 from PIL import Image, ImageFilter
@@ -43,52 +44,49 @@ def extract_exif(image):
             for tag, value in exif_data.items():
                 tag_name = TAGS.get(tag, tag)
                 if tag_name in ['Make', 'Model', 'DateTime', 'ExposureTime', 'ISOSpeedRatings', 'FNumber']:
-                    exif_details[tag_name] = str(value)
-    except Exception:
-        pass
+                    exif_details[str(tag_name)] = str(value)
+    except Exception as e:
+        print(f"EXIF Read Error: {e}")
     return exif_details
 
-# 🔴 ISI HARİTASI (HEATMAP) ÜRETECİ (Occlusion Saliency Map)
+# 🔴 ISI HARİTASI (HEATMAP) ÜRETECİ
 def generate_heatmap(image, original_prob, pred_idx):
-    base_img = image.resize((224, 224), Image.BILINEAR)
-    grid_size = 8
-    patch_size = 224 // grid_size
-    heatmap_grid = np.zeros((grid_size, grid_size), dtype=np.float32)
+    try:
+        base_img = image.resize((224, 224), Image.BILINEAR)
+        grid_size = 6  # Hız için 6x6 grid
+        patch_size = 224 // grid_size
+        heatmap_grid = np.zeros((grid_size, grid_size), dtype=np.float32)
 
-    # Görseli 8x8 bölgelere ayırıp modelin duyarlılığını test ediyoruz
-    for i in range(grid_size):
-        for j in range(grid_size):
-            masked_img = base_img.copy()
-            # İlgili bölgeyi blurluyoruz
-            box = (j * patch_size, i * patch_size, (j + 1) * patch_size, (i + 1) * patch_size)
-            patch = masked_img.crop(box).filter(ImageFilter.GaussianBlur(radius=10))
-            masked_img.paste(patch, box)
+        for i in range(grid_size):
+            for j in range(grid_size):
+                masked_img = base_img.copy()
+                box = (j * patch_size, i * patch_size, (j + 1) * patch_size, (i + 1) * patch_size)
+                patch = masked_img.crop(box).filter(ImageFilter.GaussianBlur(radius=8))
+                masked_img.paste(patch, box)
 
-            # Test
-            inp = preprocess_image(masked_img)
-            out = session.run(None, {input_name: inp})[0]
-            prob = temperature_scaled_softmax(out, temperature=4.5)[0][pred_idx]
-            
-            # Karar ne kadar düştüyse o bölge o kadar önemlidir
-            heatmap_grid[i, j] = max(0, original_prob - prob)
+                inp = preprocess_image(masked_img)
+                out = session.run(None, {input_name: inp})[0]
+                prob = temperature_scaled_softmax(out, temperature=4.5)[0][pred_idx]
+                
+                heatmap_grid[i, j] = max(0, original_prob - prob)
 
-    # Normalizasyon
-    if heatmap_grid.max() > 0:
-        heatmap_grid = heatmap_grid / heatmap_grid.max()
+        if heatmap_grid.max() > 0:
+            heatmap_grid = heatmap_grid / heatmap_grid.max()
 
-    # Heatmap görselini büyüt ve renklendir (Kırmızı/Sarı odak noktaları)
-    heat_img = Image.fromarray((heatmap_grid * 255).astype(np.uint8)).resize((224, 224), Image.BILINEAR)
-    heat_np = np.array(heat_img)
+        heat_img = Image.fromarray((heatmap_grid * 255).astype(np.uint8)).resize((224, 224), Image.BILINEAR)
+        heat_np = np.array(heat_img)
 
-    # RGB Renk Katmanı Oluşturma (Kırmızı Odak)
-    overlay_np = np.array(base_img).astype(np.float32)
-    overlay_np[:, :, 0] = np.clip(overlay_np[:, :, 0] + heat_np * 1.2, 0, 255) # Kırmızı kanalı vurgula
+        overlay_np = np.array(base_img).astype(np.float32)
+        overlay_np[:, :, 0] = np.clip(overlay_np[:, :, 0] + heat_np * 1.5, 0, 255)
 
-    result_heatmap = Image.fromarray(overlay_np.astype(np.uint8))
-    
-    buffered = io.BytesIO()
-    result_heatmap.save(buffered, format="JPEG", quality=90)
-    return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode('utf-8')}"
+        result_heatmap = Image.fromarray(overlay_np.astype(np.uint8))
+        
+        buffered = io.BytesIO()
+        result_heatmap.save(buffered, format="JPEG", quality=90)
+        return f"data:image/jpeg;base64,{base64.b64encode(buffered.getvalue()).decode('utf-8')}"
+    except Exception as e:
+        print(f"Heatmap Error: {e}")
+        return None
 
 CLASS_NAMES = {
     0: {'label': 'AI Generated', 'color': '#ef4444'},
@@ -111,7 +109,6 @@ def index():
                 image_bytes = file.read()
                 image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
 
-                # Base64 Orijinal Görsel
                 buffered = io.BytesIO()
                 image.save(buffered, format="JPEG", quality=95)
                 img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
@@ -142,31 +139,23 @@ def index():
                 elif pred_idx == 1 and conf_score < real_threshold:
                     is_gray = True
 
-                if is_gray:
-                    result = {
-                        'prediction': CLASS_NAMES['gray']['label'],
-                        'confidence': conf_score,
-                        'color': CLASS_NAMES['gray']['color'],
-                        'image_data': uploaded_image_data,
-                        'heatmap_data': heatmap_data,
-                        'exif': exif_data,
-                        'is_gray': True
-                    }
-                else:
-                    result = {
-                        'prediction': CLASS_NAMES[pred_idx]['label'],
-                        'confidence': conf_score,
-                        'color': CLASS_NAMES[pred_idx]['color'],
-                        'image_data': uploaded_image_data,
-                        'heatmap_data': heatmap_data,
-                        'exif': exif_data,
-                        'is_gray': False
-                    }
+                result = {
+                    'prediction': CLASS_NAMES['gray']['label'] if is_gray else CLASS_NAMES[pred_idx]['label'],
+                    'confidence': conf_score,
+                    'color': CLASS_NAMES['gray']['color'] if is_gray else CLASS_NAMES[pred_idx]['color'],
+                    'image_data': uploaded_image_data,
+                    'heatmap_data': heatmap_data,
+                    'exif': exif_data,
+                    'is_gray': is_gray
+                }
 
                 return render_template('index.html', result=result)
 
             except Exception as e:
-                return render_template('index.html', error=f'An error occurred while processing the image: {str(e)}')
+                # Hatayı terminale ve ekrana açıkça bastıralım
+                error_msg = f"Processing Error: {str(e)}"
+                print(traceback.format_exc())
+                return render_template('index.html', error=error_msg)
 
     return render_template('index.html')
 
