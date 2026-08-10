@@ -33,7 +33,7 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 24px;
             padding: 40px;
-            max-width: 640px;
+            max-width: 680px;
             width: 100%;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
@@ -156,47 +156,113 @@
             animation: fadeIn 0.4s ease-out;
         }
 
-        .previews-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 16px;
-            margin-bottom: 20px;
-        }
-
-        .preview-box {
-            width: 100%;
-            max-height: 320px;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(0, 0, 0, 0.2);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            position: relative;
-            padding: 8px;
-        }
-
-        .preview-box img {
-            max-width: 100%;
-            max-height: 280px;
-            width: auto;
-            height: auto;
-            object-fit: contain;
-            display: block;
-            border-radius: 8px;
-        }
-
-        .preview-label {
-            font-size: 0.75rem;
+        /* 🔄 BEFORE / AFTER IMAGE SLIDER */
+        .slider-section-title {
+            font-size: 0.85rem;
             font-weight: 600;
             color: #94a3b8;
-            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .comparison-slider {
+            position: relative;
+            width: 100%;
+            max-width: 340px;
+            height: 340px;
+            margin: 0 auto 24px auto;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+        }
+
+        .slider-img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .img-overlay {
+            width: 50%;
+            overflow: hidden;
+            border-right: 2px solid #6366f1;
+            z-index: 2;
+        }
+
+        .img-overlay img {
+            width: 340px;
+            max-width: none;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .slider-range {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: ew-resize;
+            z-index: 3;
+        }
+
+        .slider-label {
+            position: absolute;
+            bottom: 10px;
+            padding: 4px 8px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            font-size: 0.7rem;
+            font-weight: 600;
+            border-radius: 6px;
+            color: #e2e8f0;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .label-orig { left: 10px; }
+        .label-heat { right: 10px; }
+
+        /* GRID FOR CARDS */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .analytics-card {
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 12px;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            text-align: center;
+        }
+
+        .analytics-card img {
+            width: 100%;
+            height: 140px;
+            object-fit: contain;
+            border-radius: 8px;
+            margin-top: 8px;
+            background: #000;
+        }
+
+        .card-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #c084fc;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
+        /* RESULT CARD */
         .result-card {
             border-left: 4px solid;
             padding-left: 16px;
@@ -231,7 +297,7 @@
             justify-content: space-between;
         }
 
-        /* EXIF Metadata Card */
+        /* EXIF METADATA */
         .exif-container {
             background: rgba(15, 23, 42, 0.5);
             border-radius: 12px;
@@ -266,7 +332,6 @@
             font-size: 0.7rem;
             color: #64748b;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
 
         .exif-value {
@@ -321,21 +386,40 @@
 
         {% if result %}
         <div class="result-container">
-            <!-- Image & Heatmap Grid -->
-            <div class="previews-grid">
-                <div class="preview-box">
-                    <div class="preview-label">Original Image</div>
-                    <img src="{{ result.image_data }}" alt="Analyzed Image">
+            
+            <!-- 🔄 CANLI KAYDIRICI (Interactive Live Slider) -->
+            {% if result.heatmap_data %}
+            <div class="slider-section-title">🎛️ Interactive Focus Comparison (Drag Slider)</div>
+            <div class="comparison-slider">
+                <!-- Heatmap (Arka Katman) -->
+                <img src="{{ result.heatmap_data }}" class="slider-img" alt="Heatmap">
+                <!-- Original Image (Ön Katman - Kırpılan) -->
+                <div class="slider-img img-overlay" id="slider-overlay">
+                    <img src="{{ result.image_data }}" alt="Original">
                 </div>
-                {% if result.heatmap_data %}
-                <div class="preview-box">
-                    <div class="preview-label">🔥 Model Focus (Heatmap)</div>
-                    <img src="{{ result.heatmap_data }}" alt="Heatmap Focus">
+                <!-- Range Input -->
+                <input type="range" min="0" max="100" value="50" class="slider-range" oninput="moveSlider(this.value)">
+                <span class="slider-label label-orig">Original</span>
+                <span class="slider-label label-heat">Heatmap</span>
+            </div>
+            {% endif %}
+
+            <!-- 📊 ANALYTICS GRID (FFT Spectrum) -->
+            <div class="analytics-grid">
+                {% if result.fft_data %}
+                <div class="analytics-card">
+                    <div class="card-label">🌊 2D FFT Noise Spectrum</div>
+                    <img src="{{ result.fft_data }}" alt="FFT Spectrum">
                 </div>
                 {% endif %}
+                
+                <div class="analytics-card">
+                    <div class="card-label">📸 Raw Original</div>
+                    <img src="{{ result.image_data }}" alt="Original Preview">
+                </div>
             </div>
 
-            <!-- Result Summary Card -->
+            <!-- RESULT CARD -->
             <div class="result-card" style="border-left-color: {{ result.color }};">
                 <div class="result-title" style="color: {{ result.color }};">
                     {{ result.prediction }}
@@ -351,7 +435,7 @@
                 </div>
             </div>
 
-            <!-- EXIF Metadata Card -->
+            <!-- EXIF METADATA CARD -->
             <div class="exif-container">
                 <div class="exif-title">📷 EXIF Metadata Analysis</div>
                 {% if result.exif and result.exif|length > 0 %}
@@ -393,6 +477,14 @@
             btn.disabled = true;
             btnText.innerText = "Analyzing Image...";
             spinner.style.display = "inline-block";
+        }
+
+        // Live Slider Logic
+        function moveSlider(val) {
+            const overlay = document.getElementById('slider-overlay');
+            if (overlay) {
+                overlay.style.width = val + "%";
+            }
         }
     </script>
 </body>
