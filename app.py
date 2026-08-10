@@ -29,7 +29,7 @@ def preprocess_image(image):
     img_data = np.expand_dims(img_data, axis=0)
     return img_data
 
-# 🎯 SICAKLIK ÖLÇEKLEMELİ SOFTMAX (Temperature = 4.5)
+# 🎯 SICAKLIK ÖLÇEKLEMELİ SOFTMAX (Temperature = 4.5 Korundu)
 def temperature_scaled_softmax(logits, temperature=4.5):
     scaled_logits = logits / temperature
     e_x = np.exp(scaled_logits - np.max(scaled_logits, axis=1, keepdims=True))
@@ -38,7 +38,7 @@ def temperature_scaled_softmax(logits, temperature=4.5):
 CLASS_NAMES = {
     0: {'label': 'AI Generated', 'color': '#ef4444'},
     1: {'label': 'Real Image', 'color': '#10b981'},
-    'gray': {'label': 'Uncertain / Suspicious (Filter Detected)', 'color': '#f59e0b'}
+    'gray': {'label': 'Uncertain / Suspicious', 'color': '#f59e0b'}
 }
 
 @app.route('/', methods=['GET', 'POST'])
@@ -66,15 +66,15 @@ def index():
                 input_data = preprocess_image(image)
                 raw_outputs = session.run(None, {input_name: input_data})[0]
                 
-                # 🎯 Temperature = 4.5 ile filtreli/pürüzsüzleştirilmiş resimleri bastırıyoruz
+                # Tahmin (Temperature = 4.5)
                 probabilities = temperature_scaled_softmax(raw_outputs, temperature=4.5)[0]
 
                 pred_idx = int(np.argmax(probabilities))
                 confidence = float(probabilities[pred_idx])
                 conf_score = round(confidence * 100, 2)
 
-                # 🎯 THRESHOLD LOGIC (%80.0 altındakiler doğrudan Gri Alana düşer)
-                if conf_score < 80.0:
+                # 🎯 THRESHOLD LOGIC (%65.0 altındakiler Şüpheli/Gri Alana düşer)
+                if conf_score < 65.0:
                     result = {
                         'prediction': CLASS_NAMES['gray']['label'],
                         'confidence': conf_score,
