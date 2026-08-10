@@ -29,9 +29,8 @@ def preprocess_image(image):
     img_data = np.expand_dims(img_data, axis=0)
     return img_data
 
-# 🎯 DENGELİ SICAKLIK ÖLÇEKLEMESİ (Temperature = 3.2)
-# 4.5 fazla bastırıyordu, 3.2 ile yapay zekayı kaçırmadan aşırı özgüveni kırıyoruz.
-def temperature_scaled_softmax(logits, temperature=3.2):
+# 🎯 SICAKLIK ÖLÇEKLEMELİ SOFTMAX (Temperature = 4.5 Korundu)
+def temperature_scaled_softmax(logits, temperature=4.5):
     scaled_logits = logits / temperature
     e_x = np.exp(scaled_logits - np.max(scaled_logits, axis=1, keepdims=True))
     return e_x / e_x.sum(axis=1, keepdims=True)
@@ -67,18 +66,18 @@ def index():
                 input_data = preprocess_image(image)
                 raw_outputs = session.run(None, {input_name: input_data})[0]
                 
-                # Tahmin (Temperature = 3.2)
-                probabilities = temperature_scaled_softmax(raw_outputs, temperature=3.2)[0]
+                # Tahmin (Temperature = 4.5)
+                probabilities = temperature_scaled_softmax(raw_outputs, temperature=4.5)[0]
 
                 pred_idx = int(np.argmax(probabilities))
                 confidence = float(probabilities[pred_idx])
                 conf_score = round(confidence * 100, 2)
 
-                # 🎯 ASİMETRİK İNCE AYAR EŞİĞİ:
-                # Bir fotoğrafa "AI" demek risklidir, en az %70 güven isteriz.
-                # Ancak "Real" demek için %58 yeterlidir.
-                ai_threshold = 70.0
-                real_threshold = 58.0
+                # 🎯 AI Kararını Bir Tık Zorlaştıran Eşik Mantığı:
+                # Eğer model "AI" (0) diyorsa en az %72 güven oranı ister.
+                # Eğer model "Real" (1) diyorsa standart %65 sınırını kullanır.
+                ai_threshold = 72.0
+                real_threshold = 65.0
 
                 is_gray = False
                 if pred_idx == 0 and conf_score < ai_threshold:
