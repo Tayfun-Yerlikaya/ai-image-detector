@@ -35,10 +35,11 @@ def temperature_scaled_softmax(logits, temperature=4.5):
     e_x = np.exp(scaled_logits - np.max(scaled_logits, axis=1, keepdims=True))
     return e_x / e_x.sum(axis=1, keepdims=True)
 
+# 🎯 ETIKET GÜNCELLENDI: Filtre uyarısı eklendi
 CLASS_NAMES = {
     0: {'label': 'AI Generated', 'color': '#ef4444'},
     1: {'label': 'Real Image', 'color': '#10b981'},
-    'gray': {'label': 'Uncertain / Suspicious', 'color': '#f59e0b'}
+    'gray': {'label': 'Uncertain / Suspicious (Filter Detected)', 'color': '#f59e0b'}
 }
 
 @app.route('/', methods=['GET', 'POST'])
@@ -73,9 +74,7 @@ def index():
                 confidence = float(probabilities[pred_idx])
                 conf_score = round(confidence * 100, 2)
 
-                # 🎯 AI Kararını Bir Tık Daha Zorlaştıran Eşik:
-                # AI (0) demek için en az %78.0 güven şartı arıyoruz.
-                # Real (1) için senin belirlediğin %65.0 sınırı aynen duruyor.
+                # 🎯 AI Kararı İçin Zorlaştırılmış Eşik (%78.0):
                 ai_threshold = 78.0
                 real_threshold = 65.0
 
