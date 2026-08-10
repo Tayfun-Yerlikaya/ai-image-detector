@@ -29,8 +29,8 @@ def preprocess_image(image):
     img_data = np.expand_dims(img_data, axis=0)
     return img_data
 
-# 🎯 SICAKLIK ÖLÇEKLEMELİ SOFTMAX (Temperature = 4.5 Korundu)
-def temperature_scaled_softmax(logits, temperature=4.5):
+# 🎯 DENGELİ SICAKLIK ÖLÇEKLEMESİ (Temperature = 3.5)
+def temperature_scaled_softmax(logits, temperature=3.5):
     scaled_logits = logits / temperature
     e_x = np.exp(scaled_logits - np.max(scaled_logits, axis=1, keepdims=True))
     return e_x / e_x.sum(axis=1, keepdims=True)
@@ -66,15 +66,25 @@ def index():
                 input_data = preprocess_image(image)
                 raw_outputs = session.run(None, {input_name: input_data})[0]
                 
-                # Tahmin (Temperature = 4.5)
-                probabilities = temperature_scaled_softmax(raw_outputs, temperature=4.5)[0]
+                # Tahmin
+                probabilities = temperature_scaled_softmax(raw_outputs, temperature=3.5)[0]
 
                 pred_idx = int(np.argmax(probabilities))
                 confidence = float(probabilities[pred_idx])
                 conf_score = round(confidence * 100, 2)
 
-                # 🎯 THRESHOLD LOGIC (%65.0 altındakiler Şüpheli/Gri Alana düşer)
-                if conf_score < 65.0:
+                # 🎯 ASİMETRİK EŞİK MANTIĞI:
+                # AI kararı vermek zordur, bu yüzden en az %72 güven şartı arıyoruz.
+                ai_threshold = 72.0
+                real_threshold = 60.0
+
+                is_uncertain = False
+                if pred_idx == 0 and conf_score < ai_threshold:
+                    is_uncertain = True
+                elif pred_idx == 1 and conf_score < real_threshold:
+                    is_uncertain = True
+
+                if is_uncertain:
                     result = {
                         'prediction': CLASS_NAMES['gray']['label'],
                         'confidence': conf_score,
